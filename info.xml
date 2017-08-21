@@ -1,0 +1,24 @@
+<?xml version="1.0"?>
+<extension key="be.kava.apotheekovername" type="module">
+  <file>kavaovername</file>
+  <name>KAVA Proces Apotheekovername</name>
+  <description>CiviCRM custom extension for KAVA specific internal process (overname apotheekuitbating).</description>
+  <license>AGPL-3.0</license>
+  <maintainer>
+    <author>Kevin Levie</author>
+    <email>kevin.levie@civicoop.org</email>
+  </maintainer>
+  <urls>
+    <url desc="Main Extension Page">https://github.com/CiviCooP/be.kava.apotheekovername</url>
+    <url desc="Licensing">http://www.gnu.org/licenses/agpl-3.0.html</url>
+  </urls>
+  <releaseDate>2017-08-21</releaseDate>
+  <version>1.0</version>
+  <develStage>alpha</develStage>
+  <compatibility>
+    <ver>4.7</ver>
+  </compatibility>
+  <civix>
+    <namespace>CRM/KavaOvername</namespace>
+  </civix>
+</extension>

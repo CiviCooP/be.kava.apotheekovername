@@ -128,14 +128,14 @@ function _kavaovername_civix_civicrm_upgrade($op, CRM_Queue_Queue $queue = NULL)
 }
 
 /**
- * @return CRM_kavaovername_Upgrader
+ * @return CRM_KavaOvername_Upgrader
  */
 function _kavaovername_civix_upgrader() {
-  if (!file_exists(__DIR__ . '/CRM/kavaovername/Upgrader.php')) {
+  if (!file_exists(__DIR__ . '/CRM/KavaOvername/Upgrader.php')) {
     return NULL;
   }
   else {
-    return CRM_kavaovername_Upgrader_Base::instance();
+    return CRM_KavaOvername_Upgrader_Base::instance();
   }
 }
 
@@ -190,7 +190,7 @@ function _kavaovername_civix_civicrm_managed(&$entities) {
     $es = include $file;
     foreach ($es as $e) {
       if (empty($e['module'])) {
-        $e['module'] = 'be.kava.kavaovername';
+        $e['module'] = 'be.kava.apotheekovername';
       }
       $entities[] = $e;
       if (empty($e['params']['version'])) {
@@ -222,7 +222,7 @@ function _kavaovername_civix_civicrm_caseTypes(&$caseTypes) {
       // throw new CRM_Core_Exception($errorMessage);
     }
     $caseTypes[$name] = array(
-      'module' => 'be.kava.kavaovername',
+      'module' => 'be.kava.apotheekovername',
       'name' => $name,
       'file' => $file,
     );
@@ -248,7 +248,7 @@ function _kavaovername_civix_civicrm_angularModules(&$angularModules) {
     $name = preg_replace(':\.ang\.php$:', '', basename($file));
     $module = include $file;
     if (empty($module['ext'])) {
-      $module['ext'] = 'be.kava.kavaovername';
+      $module['ext'] = 'be.kava.apotheekovername';
     }
     $angularModules[$name] = $module;
   }

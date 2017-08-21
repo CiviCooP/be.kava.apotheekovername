@@ -1,0 +1,9 @@
+<?xml version="1.0"?>
+<menu>
+  <item>
+    <path>civicrm/kava/overname</path>
+    <page_callback>CRM_KavaOvername_Form_Start</page_callback>
+    <title>Overname apotheekuitbating</title>
+    <access_arguments>administer CiviCRM</access_arguments>
+  </item>
+</menu>

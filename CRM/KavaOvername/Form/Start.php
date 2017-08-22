@@ -100,7 +100,7 @@ class CRM_KavaOvername_Form_Start extends CRM_Core_Form {
    */
   public function postProcess() {
     $values = $this->exportValues();
-    $values['overnamedatum'] = implode('/', $values['overnamedatum']);
+    $values['overnamedatum'] = date('Ymd', strtotime($values['overnamedatum']['Y'] . '-' . $values['overnamedatum']['M'] . '-' . $values['overnamedatum']['d']));
 
     // Set variables
     $title = ts('Overname uitvoeren voor contact %1', [1 => $values['apotheek_id']]);

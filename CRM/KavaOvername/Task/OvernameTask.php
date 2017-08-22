@@ -89,7 +89,7 @@ class CRM_KavaOvername_Task_OvernameTask {
     unset($contact['id']);
     unset($contact['contact_id']);
     foreach($contact as $k => $v) {
-      if(empty($v)) {
+      if(empty($v) || strpos($k, '_id') !== false) {
         unset($contact[$k]);
       }
     }
@@ -299,7 +299,7 @@ class CRM_KavaOvername_Task_OvernameTask {
       $res = civicrm_api3($entity, $action, $params);
       if ($res['is_error']) {
         $this->transaction->rollback();
-        throw new CRM_KavaOvername_Exception('API error: ' . $res['error_message']);
+        throw new CRM_KavaOvername_Exception("API Error ({$entity}.{$action}): " . $res['error_message']);
       }
       if($action == 'create' && !empty($res['id'])) {
         return $res['id'];
@@ -311,7 +311,7 @@ class CRM_KavaOvername_Task_OvernameTask {
       }
     } catch (\CiviCRM_API3_Exception $e) {
       $this->transaction->rollback();
-      throw new CRM_KavaOvername_Exception('API exception: ' . $e->getMessage());
+      throw new CRM_KavaOvername_Exception("API Exception ({$entity}.{$action} " . print_r($params, true) . ": " . $e->getMessage());
     }
   }
 

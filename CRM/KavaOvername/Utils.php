@@ -70,4 +70,30 @@ class CRM_KavaOvername_Utils {
       return FALSE; // Contact does not exist
     }
   }
+
+  /**
+   * Check of een apotheek niet al eerder overgenomen is.
+   * @param int $contact_id Contact ID
+   * @return bool
+   */
+  public static function canBeTakenOver($contact_id) {
+
+    $cf = CRM_KavaGeneric_CustomField::singleton();
+    $apbNoField = $cf->getApiFieldName('contact_apotheekuitbating', 'APB_nummer');
+    $overnameCountField = $cf->getApiFieldName('contact_apotheekuitbating', 'Overname');
+
+    $contact = civicrm_api3('Contact', 'getsingle', [
+      'id' => $contact_id,
+      'return' => "{$apbNoField},{$overnameCountField}",
+      ]);
+
+    // Search for other contacts with same APB no and a higher overname count than this contact
+    $check = civicrm_api3('Contact', 'get', [
+      $apbNoField => $contact[$apbNoField],
+      $overnameCountField => ['>' => $contact[$overnameCountField]],
+      'return' => 'id',
+    ]);
+
+    return ($check['is_error'] == 0 && $check['count'] == 0);
+  }
 }

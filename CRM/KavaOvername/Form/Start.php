@@ -15,14 +15,22 @@ class CRM_KavaOvername_Form_Start extends CRM_Core_Form {
    */
   public function buildQuickForm() {
 
-    $this->addEntityRef('apotheek_id', 'Apotheekuitbating', [], TRUE);
+    $this->addEntityRef('apotheek_id', 'Apotheekuitbating', [
+      'api' => [ // Alleen contacttype Apotheekuitbating, meer checks in rules below
+        'params' => ['contact_sub_type' => 'apotheekuitbating'],
+      ],
+    ], TRUE);
 
     $this->add('date', 'overnamedatum', 'Overnamedatum',
       ['minYear' => date('Y'), 'maxYear' => date('Y') + 1], TRUE); // Basis date-field want 4.6
 
-    $this->addEntityRef('titularis_id', 'Nieuwe titularis', ['create' => TRUE], TRUE);
+    $this->addEntityRef('titularis_id', 'Nieuwe titularis', [
+      'api' => [ // Alleen contacttype Apotheker toegestaan
+        'params' => ['contact_sub_type' => 'apotheker'],
+      ],
+    ], TRUE);
 
-    $this->addEntityRef('eigenaar_id', 'Nieuwe eigenaar', ['create' => TRUE], TRUE);
+    $this->addEntityRef('eigenaar_id', 'Nieuwe eigenaar', [], TRUE);
 
     $this->addButtons([
       [
@@ -89,6 +97,11 @@ class CRM_KavaOvername_Form_Start extends CRM_Core_Form {
     }
     if(!CRM_KavaOvername_Utils::contactIdExists($values['eigenaar_id'])) {
       $errors['eigenaar_id'] = ts('Contact bestaat niet.');
+    }
+
+    // Check of apotheek niet al overgenomen is
+    if(!CRM_KavaOvername_Utils::canBeTakenOver($values['apotheek_id'])) {
+      $errors['apotheek_id'] = ts('Deze apotheek is al eerder overgenomen. Alleen de apotheekuitbating met het hoogste overnamecijfer kan worden overgenomen.');
     }
 
     // Return errors, or true if no errors found

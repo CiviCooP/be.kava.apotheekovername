@@ -66,7 +66,7 @@ class CRM_KavaOvername_Task_OvernameTask {
   public function doOvername($apotheekId, $overnamedatum, $titularisId, $eigenaarId) {
 
     $this->transaction = new CRM_Core_Transaction;
-    $cf = CRM_KavaOvername_CustomField::singleton();
+    $cf = CRM_KavaGeneric_CustomField::singleton();
 
     // -- 1. Copy apotheekuitbating to a new contact, including all basic and custom fields
 

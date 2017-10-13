@@ -53,7 +53,7 @@ class CRM_KavaOvername_Form_Start extends CRM_Core_Form {
     $defaults = parent::setDefaultValues();
 
     // Default overnamedatum is vandaag
-    $defaults['overnamedatum'] = date('Ymd');
+    $defaults['overnamedatum'] = date('Y-m-d');
 
     // Default apotheekuitbating is $_GET['cid'] if set
     $cid = CRM_Utils_Request::retrieve('cid', 'Positive', $this, FALSE, NULL, 'GET');
@@ -81,12 +81,15 @@ class CRM_KavaOvername_Form_Start extends CRM_Core_Form {
     // Check overnamedatum
     if(empty($values['overnamedatum']) || !is_array($values['overnamedatum'])) {
       $errors['overnamedatum'] = ts('Vul een overnamedatum in.');
+    }
+
+    /* Verwijderde check, datum hoeft niet meer in de toekomst te liggen
     } else {
       $overnamedatum = strtotime($values['overnamedatum']['Y'] . '-' . $values['overnamedatum']['M'] . '-' . $values['overnamedatum']['d']);
       if(time() > ($overnamedatum + 86400)) {
         $errors['overnamedatum'] = ts('De overnamedatum moet in de toekomst liggen.');
       }
-    }
+    } */
 
     // Check contact types
     if(!CRM_KavaOvername_Utils::hasContactSubType($values['apotheek_id'], 'apotheekuitbating')) {

@@ -77,7 +77,6 @@ class CRM_KavaOvername_Utils {
    * @return bool
    */
   public static function canBeTakenOver($contact_id) {
-
     $cf = CRM_KavaGeneric_CustomField::singleton();
     $apbNoField = $cf->getApiFieldName('contact_apotheekuitbating', 'APB_nummer');
     $overnameCountField = $cf->getApiFieldName('contact_apotheekuitbating', 'Overname');

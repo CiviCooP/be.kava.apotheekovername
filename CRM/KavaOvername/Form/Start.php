@@ -75,7 +75,7 @@ class CRM_KavaOvername_Form_Start extends CRM_Core_Form {
    * @param array $values Form values
    * @return array|bool True or array of errors
    */
-  public function checkValid($values) {
+  public static function checkValid($values) {
     $errors = [];
 
     // Check overnamedatum

@@ -24,6 +24,10 @@ class CRM_KavaOvername_Form_Start extends CRM_Core_Form {
     $this->add('date', 'overnamedatum', 'Overnamedatum',
       ['minYear' => date('Y'), 'maxYear' => date('Y') + 1], TRUE); // Basis date-field want 4.6
 
+    $this->add('text', 'name', 'Nieuwe apotheeknaam', [], TRUE);
+
+    $this->add('text', 'btw_no', 'Nieuw BTW-nummer', [], TRUE);
+
     $this->addEntityRef('titularis_id', 'Nieuwe titularis', [
       'api' => [ // Alleen contacttype Apotheker toegestaan
         'params' => ['contact_sub_type' => 'apotheker'],
@@ -83,14 +87,6 @@ class CRM_KavaOvername_Form_Start extends CRM_Core_Form {
       $errors['overnamedatum'] = ts('Vul een overnamedatum in.');
     }
 
-    /* Verwijderde check, datum hoeft niet meer in de toekomst te liggen
-    } else {
-      $overnamedatum = strtotime($values['overnamedatum']['Y'] . '-' . $values['overnamedatum']['M'] . '-' . $values['overnamedatum']['d']);
-      if(time() > ($overnamedatum + 86400)) {
-        $errors['overnamedatum'] = ts('De overnamedatum moet in de toekomst liggen.');
-      }
-    } */
-
     // Check contact types
     if(!CRM_KavaOvername_Utils::hasContactSubType($values['apotheek_id'], 'apotheekuitbating')) {
       $errors['apotheek_id'] = ts('Contact is niet van het type Apotheekuitbating.');
@@ -116,12 +112,15 @@ class CRM_KavaOvername_Form_Start extends CRM_Core_Form {
    */
   public function postProcess() {
     $values = $this->exportValues();
-    $values['overnamedatum'] = date('Ymd', strtotime($values['overnamedatum']['Y'] . '-' . $values['overnamedatum']['M'] . '-' . $values['overnamedatum']['d']));
+
+    $overnameDatumTimeStamp = strtotime($values['overnamedatum']['Y'] . '-' . $values['overnamedatum']['M'] . '-' . $values['overnamedatum']['d']);
+    $values['overnamedatum'] = date('Ymd', $overnameDatumTimeStamp);
+    $values['overnamedatum_end'] = date('Ymd', $overnameDatumTimeStamp - 86400);
 
     // Set variables
     $title = ts('Overname uitvoeren voor contact %1', [1 => $values['apotheek_id']]);
     $redirectUrl = CRM_Utils_System::url('civicrm/contact/view', ['cid' => $values['apotheek_id'], 'reset' => 1]);
-    $taskData = [$values['apotheek_id'], $values['overnamedatum'], $values['titularis_id'], $values['eigenaar_id']];
+    $taskData = [$values['apotheek_id'], $values['overnamedatum'], $values['overnamedatum_end'], $values['titularis_id'], $values['eigenaar_id'], $values['name'], $values['btw_no']];
 
     // Add new task to queue
     $queue = CRM_Queue_Service::singleton()->create([

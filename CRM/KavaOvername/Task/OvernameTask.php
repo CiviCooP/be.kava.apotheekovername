@@ -36,14 +36,17 @@ class CRM_KavaOvername_Task_OvernameTask {
    * Run an overname task from the task queue.
    * @param CRM_Queue_TaskContext $ctx
    * @param int $apotheekId Apotheekuitbating (contact id)
-   * @param int $overnamedatum Overnamedatum (timestamp)
+   * @param string $overnamedatum Datum start nieuwe relaties/lidmaatschappen (Ymd)
+   * @param string $overnamedatumEnd Datum einde oude relaties/lidmaatschappen (Ymd)
    * @param int $titularisId Nieuwe titularis (contact id)
    * @param int $eigenaarId Nieuwe eigenaar (contact id)
+   * @param string $name Nieuwe apotheeknaam
+   * @param string $btw_no Nieuw BTW-nummer
    * @return bool Success
    */
-  public static function executeFromQueue(CRM_Queue_TaskContext $ctx, $apotheekId, $overnamedatum, $titularisId, $eigenaarId) {
+  public static function executeFromQueue(CRM_Queue_TaskContext $ctx, $apotheekId, $overnamedatum, $overnamedatumEnd, $titularisId, $eigenaarId, $name, $btw_no) {
     $instance = static::instance();
-    return $instance->doOvername($apotheekId, $overnamedatum, $titularisId, $eigenaarId);
+    return $instance->doOvername($apotheekId, $overnamedatum, $overnamedatumEnd, $titularisId, $eigenaarId, $name, $btw_no);
   }
 
   /**
@@ -57,16 +60,24 @@ class CRM_KavaOvername_Task_OvernameTask {
   /**
    * Voer een overname uit.
    * @param int $apotheekId Apotheekuitbating (contact id)
-   * @param int $overnamedatum Overnamedatum (timestamp)
+   * @param string $overnamedatum Datum start nieuwe relaties/lidmaatschappen (Ymd)
+   * @param string $overnamedatumEnd Datum einde oude relaties/lidmaatschappen (Ymd)
    * @param int $titularisId Nieuwe titularis (contact id)
    * @param int $eigenaarId Nieuwe eigenaar (contact id)
+   * @param string $name Nieuwe apotheeknaam
+   * @param string $btw_no Nieuw BTW-nummer
    * @return bool Success
    * @throws CRM_KavaOvername_Exception On error
    */
-  public function doOvername($apotheekId, $overnamedatum, $titularisId, $eigenaarId) {
+  public function doOvername($apotheekId, $overnamedatum, $overnamedatumEnd, $titularisId, $eigenaarId, $name, $btw_no) {
 
     $this->transaction = new CRM_Core_Transaction;
     $cf = CRM_KavaGeneric_CustomField::singleton();
+
+    $btwNoField = $cf->getApiFieldName('contact_organisation', 'BTW_nummer');
+    $overnameCountField = $cf->getApiFieldName('contact_apotheekuitbating', 'Overname');
+    $overnameVanField = $cf->getApiFieldName('contact_apotheekuitbating', 'Overname_van');
+    $overnameTotField = $cf->getApiFieldName('contact_apotheekuitbating', 'Overname_tot');
 
     // -- 1. Copy apotheekuitbating to a new contact, including all basic and custom fields
 
@@ -85,55 +96,58 @@ class CRM_KavaOvername_Task_OvernameTask {
       'return' => implode(',', $fieldnames),
     ]);
 
-    //  - 1c. Create new contact
+    //  - 1c. Filter new contact data
     unset($contact['id']);
     unset($contact['contact_id']);
-    foreach($contact as $k => $v) {
-      if(empty($v) || strpos($k, '_id') !== false) {
+    foreach ($contact as $k => $v) {
+      if (empty($v) || strpos($k, '_id') !== FALSE) {
         unset($contact[$k]);
       }
     }
+
+    //  - 1d. Set overname count, overname van date, name and BTW no for new contact
+    $oldName = $contact['organization_name'];
+    $contact['organization_name'] = $name;
+
+    $contact[$btwNoField] = $btw_no;
+    $contact[$overnameCountField] = (int)$contact[$overnameCountField] + 1;
+    $contact[$overnameVanField] = $overnamedatum;
+
+    //  - 1d. Create new contact
     $newApotheekId = $this->api('Contact', 'create', $contact);
 
-    //  - 1d. Rename old contact
+    //  - 1e. Rename old contact and set overname tot date
     $this->api('Contact', 'create', [
       'id'                => $apotheekId,
-      'organization_name' => $contact['organization_name'] . ' (oud)',
+      'organization_name' => $oldName . ' (oud)',
+      $overnameTotField => $overnamedatumEnd,
     ]);
 
 
-    // -- 3. Update new contact information and relationships
+    // -- 2. Create new relationships
 
-    //  - 2a. Update overname count for new contact
-    $overnameCountField = $cf->getApiFieldName('contact_apotheekuitbating', 'Overname');
-    $newOvernameCount = (int) $contact[$overnameCountField] + 1;
-    $this->api('Contact', 'create', [
-      'id'                => $newApotheekId,
-      $overnameCountField => $newOvernameCount,
-    ]);
-
-    //  - 2b. Create new titularis relationship
+    //  - 2a. Create new titularis relationship
     $titularisRelationshipType = $this->api('RelationshipType', 'getsingle', [
       'name_a_b' => 'heeft als titularis',
-      'return' => 'id',
+      'return'   => 'id',
     ]);
     $this->api('Relationship', 'create', [
-      'contact_id_a' => $newApotheekId,
-      'contact_id_b' => $titularisId,
+      'contact_id_a'         => $newApotheekId,
+      'contact_id_b'         => $titularisId,
       'relationship_type_id' => $titularisRelationshipType['id'],
-      'start_date' => $overnamedatum,
+      'start_date'           => $overnamedatum,
     ]);
 
-    //  - 2c. Create new eigenaar relationship
+    //  - 2d. Create new eigenaar relationship
     $eigenaarRelationshipType = $this->api('RelationshipType', 'getsingle', [
       'name_a_b' => 'heeft als eigenaar',
-      'return' => 'id',
+      'return'   => 'id',
     ]);
     $this->api('Relationship', 'create', [
-      'contact_id_a' => $newApotheekId,
-      'contact_id_b' => $eigenaarId,
+      'contact_id_a'         => $newApotheekId,
+      'contact_id_b'         => $eigenaarId,
       'relationship_type_id' => $eigenaarRelationshipType['id'],
-      'start_date' => $overnamedatum,
+      'start_date'           => $overnamedatum,
     ]);
 
 
@@ -142,10 +156,10 @@ class CRM_KavaOvername_Task_OvernameTask {
     //  - 3a. Copy addresses
     $addresses = $this->api('Address', 'get', [
       'contact_id' => $apotheekId,
-      'options' => ['limit' => 0],
+      'options'    => ['limit' => 0],
     ]);
-    if(count($addresses) > 0) {
-      foreach($addresses as $address) {
+    if (count($addresses) > 0) {
+      foreach ($addresses as $address) {
         unset($address['id']);
         $address['contact_id'] = $newApotheekId;
 
@@ -156,10 +170,10 @@ class CRM_KavaOvername_Task_OvernameTask {
     //  - 3b. Copy phone numbers
     $phonenos = $this->api('Phone', 'get', [
       'contact_id' => $apotheekId,
-      'options' => ['limit' => 0],
+      'options'    => ['limit' => 0],
     ]);
-    if(count($phonenos) > 0) {
-      foreach($phonenos as $phoneno) {
+    if (count($phonenos) > 0) {
+      foreach ($phonenos as $phoneno) {
         unset($phoneno['id']);
         $phoneno['contact_id'] = $newApotheekId;
 
@@ -170,10 +184,10 @@ class CRM_KavaOvername_Task_OvernameTask {
     //  - 3c. Copy email addresses
     $emailaddrs = $this->api('Email', 'get', [
       'contact_id' => $apotheekId,
-      'options' => ['limit' => 0],
+      'options'    => ['limit' => 0],
     ]);
-    if(count($emailaddrs) > 0) {
-      foreach($emailaddrs as $emailaddr) {
+    if (count($emailaddrs) > 0) {
+      foreach ($emailaddrs as $emailaddr) {
         unset($emailaddr['id']);
         $emailaddr['contact_id'] = $newApotheekId;
 
@@ -187,21 +201,21 @@ class CRM_KavaOvername_Task_OvernameTask {
     //  - 4a. Fetch active relationships (A -> B + B -> A)
     $currentRelationshipsA = $this->api('Relationship', 'get', [
       'contact_id_a' => $apotheekId,
-      'is_active' => 1,
-      'options' => ['limit' => 0],
+      'is_active'    => 1,
+      'options'      => ['limit' => 0],
     ]);
     $currentRelationshipsB = $this->api('Relationship', 'get', [
       'contact_id_b' => $apotheekId,
-      'is_active' => 1,
-      'options' => ['limit' => 0],
+      'is_active'    => 1,
+      'options'      => ['limit' => 0],
     ]);
 
     //  - 4b. Walk all relationships, add them to new contact, and end them for old contact
     $currentRelationships = array_merge($currentRelationshipsA, $currentRelationshipsB);
-    foreach($currentRelationships as $relationship) {
+    foreach ($currentRelationships as $relationship) {
 
-      if($relationship['relationship_type_id'] == $titularisRelationshipType['id'] ||
-         $relationship['relationship_type_id'] == $eigenaarRelationshipType['id']) {
+      if ($relationship['relationship_type_id'] == $titularisRelationshipType['id'] ||
+          $relationship['relationship_type_id'] == $eigenaarRelationshipType['id']) {
         // Don't copy titularis + eigenaar
       } else {
         // Copy all other relationships
@@ -210,9 +224,9 @@ class CRM_KavaOvername_Task_OvernameTask {
         unset($newRelationship['id']);
         $newRelationship['start_date'] = $overnamedatum;
 
-        if($newRelationship['contact_id_a'] == $apotheekId) {
+        if ($newRelationship['contact_id_a'] == $apotheekId) {
           $newRelationship['contact_id_a'] = $newApotheekId;
-        } elseif($newRelationship['contact_id_b'] == $apotheekId) {
+        } elseif ($newRelationship['contact_id_b'] == $apotheekId) {
           $newRelationship['contact_id_b'] = $newApotheekId;
         }
 
@@ -222,8 +236,8 @@ class CRM_KavaOvername_Task_OvernameTask {
 
       // End old relationship
       $this->api('Relationship', 'create', [
-        'id' => $relationship['id'],
-        'end_date' => $overnamedatum,
+        'id'        => $relationship['id'],
+        'end_date'  => $overnamedatumEnd,
         'is_active' => 0,
       ]);
     }
@@ -234,8 +248,8 @@ class CRM_KavaOvername_Task_OvernameTask {
     //  - 5a. Fetch active memberships
     $currentMemberships = $this->api('Membership', 'get', [
       'contact_id' => $apotheekId,
-      'status_id' => ['IN' => ['New', 'Current', 'Grace']],
-      'options' => ['limit' => 0],
+      'status_id'  => ['IN' => ['New', 'Current', 'Grace']],
+      'options'    => ['limit' => 0],
     ]);
 
     //  - 5b. Fetch membership type ids for special cases
@@ -247,9 +261,9 @@ class CRM_KavaOvername_Task_OvernameTask {
     ]);
 
     //  - 5b. Walk all memberships, add them to new contact, and add them for old contact
-    foreach($currentMemberships as $membership) {
+    foreach ($currentMemberships as $membership) {
 
-      if($membership['membership_type_id'] == $volmachtApoMembershipType['id']) {
+      if ($membership['membership_type_id'] == $volmachtApoMembershipType['id']) {
         // Don't migrate this membership type
       } else {
         // Copy all other memberships
@@ -259,7 +273,7 @@ class CRM_KavaOvername_Task_OvernameTask {
         $newMembership['contact_id'] = $newApotheekId;
 
         // Membership start date is original start date for Apotheekkrant, overnamedatum for all others
-        if($membership['membership_type_id'] == $apotheekkrantMembershipType['id']) {
+        if ($membership['membership_type_id'] == $apotheekkrantMembershipType['id']) {
           $newMembership['start_date'] = $membership['start_date'];
         } else {
           $newMembership['start_date'] = $overnamedatum;
@@ -271,8 +285,8 @@ class CRM_KavaOvername_Task_OvernameTask {
 
       // End membership for old contact
       $this->api('Membership', 'create', [
-        'id' => $membership['id'],
-        'end_date' => $overnamedatum,
+        'id'       => $membership['id'],
+        'end_date' => $overnamedatumEnd,
       ]);
     }
 
@@ -301,17 +315,16 @@ class CRM_KavaOvername_Task_OvernameTask {
         $this->transaction->rollback();
         throw new CRM_KavaOvername_Exception("API Error ({$entity}.{$action}): " . $res['error_message']);
       }
-      if($action == 'create' && !empty($res['id'])) {
+      if ($action == 'create' && !empty($res['id'])) {
         return $res['id'];
-      }
-      elseif (isset($res['values']) && is_array($res['values'])) {
+      } elseif (isset($res['values']) && is_array($res['values'])) {
         return $res['values'];
       } else {
         return $res;
       }
     } catch (\CiviCRM_API3_Exception $e) {
       $this->transaction->rollback();
-      throw new CRM_KavaOvername_Exception("API Exception ({$entity}.{$action} " . print_r($params, true) . ": " . $e->getMessage());
+      throw new CRM_KavaOvername_Exception("API Exception ({$entity}.{$action} " . print_r($params, TRUE) . ": " . $e->getMessage());
     }
   }
 

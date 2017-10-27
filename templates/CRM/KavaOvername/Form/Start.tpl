@@ -1,6 +1,6 @@
 <div class="overname-info">
-  <p>{ts}Met dit formulier kun je de overname van een apotheekuitbating uitvoeren.{/ts}<br />
-  {ts}Vul de apotheek, overnamedatum en de nieuwe titularis en eigenaar in.{/ts}</p>
+  <p>{ts}Met dit formulier kunt u de overname van een apotheekuitbating uitvoeren.{/ts}<br />
+  {ts}Vul de apotheek, overnamedatum, de nieuwe naam en BTW-nummer, en de nieuwe titularis en eigenaar in.{/ts}</p>
 </div>
 
 {foreach from=$elementNames item=elementName}

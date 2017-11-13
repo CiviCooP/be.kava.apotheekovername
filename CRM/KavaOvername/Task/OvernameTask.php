@@ -41,12 +41,14 @@ class CRM_KavaOvername_Task_OvernameTask {
    * @param int $titularisId Nieuwe titularis (contact id)
    * @param int $eigenaarId Nieuwe eigenaar (contact id)
    * @param string $name Nieuwe apotheeknaam
-   * @param string $btw_no Nieuw BTW-nummer
+   * @param string $btwNo Nieuw BTW-nummer
+   * @param string $organisatievorm Organisatievorm
+   * @param int $tdId Tariferingsdienst (contact id)
    * @return bool Success
    */
-  public static function executeFromQueue(CRM_Queue_TaskContext $ctx, $apotheekId, $overnamedatum, $overnamedatumEnd, $titularisId, $eigenaarId, $name, $btw_no) {
+  public static function executeFromQueue(CRM_Queue_TaskContext $ctx, $apotheekId, $overnamedatum, $overnamedatumEnd, $titularisId, $eigenaarId, $name, $btwNo, $organisatievorm, $tdId) {
     $instance = static::instance();
-    return $instance->doOvername($apotheekId, $overnamedatum, $overnamedatumEnd, $titularisId, $eigenaarId, $name, $btw_no);
+    return $instance->doOvername($apotheekId, $overnamedatum, $overnamedatumEnd, $titularisId, $eigenaarId, $name, $btwNo, $organisatievorm, $tdId);
   }
 
   /**
@@ -65,19 +67,27 @@ class CRM_KavaOvername_Task_OvernameTask {
    * @param int $titularisId Nieuwe titularis (contact id)
    * @param int $eigenaarId Nieuwe eigenaar (contact id)
    * @param string $name Nieuwe apotheeknaam
-   * @param string $btw_no Nieuw BTW-nummer
+   * @param string $btwNo Nieuw BTW-nummer
+   * @param string $organisatievorm Organisatievorm
+   * @param int $tdId Tariferingsdienst (contact id)
    * @return bool Success
    * @throws CRM_KavaOvername_Exception On error
    */
-  public function doOvername($apotheekId, $overnamedatum, $overnamedatumEnd, $titularisId, $eigenaarId, $name, $btw_no) {
+  public function doOvername($apotheekId, $overnamedatum, $overnamedatumEnd, $titularisId, $eigenaarId, $name, $btwNo, $organisatievorm, $tdId) {
 
     $this->transaction = new CRM_Core_Transaction;
     $cf = CRM_KavaGeneric_CustomField::singleton();
 
     $btwNoField = $cf->getApiFieldName('contact_organisation', 'BTW_nummer');
+    $organisatievormField = $cf->getApiFieldName('contact_organisation', 'Organisatievorm');
+
     $overnameCountField = $cf->getApiFieldName('contact_apotheekuitbating', 'Overname');
     $overnameVanField = $cf->getApiFieldName('contact_apotheekuitbating', 'Overname_van');
     $overnameTotField = $cf->getApiFieldName('contact_apotheekuitbating', 'Overname_tot');
+
+    $betaalschemaVanFieldId = $cf->getFieldId('Betaalschema', 'Periode_van');
+    $betaalschemaTotFieldId = $cf->getFieldId('Betaalschema', 'Periode_tot');
+    $betaalschemaNummerFieldId = $cf->getFieldId('Betaalschema', 'Schema');
 
     // -- 1. Copy apotheekuitbating to a new contact, including all basic and custom fields
 
@@ -99,27 +109,31 @@ class CRM_KavaOvername_Task_OvernameTask {
     //  - 1c. Filter new contact data
     unset($contact['id']);
     unset($contact['contact_id']);
+    unset($contact['email']); // Leads to double entries
+    unset($contact[$betaalschemaVanFieldId]); // Handled separately below
+    unset($contact[$betaalschemaTotFieldId]); // Handled separately below
+    unset($contact[$betaalschemaNummerFieldId]); // Handled separately below
+
     foreach ($contact as $k => $v) {
       if (empty($v) || strpos($k, '_id') !== FALSE) {
         unset($contact[$k]);
       }
     }
 
-    //  - 1d. Set overname count, overname van date, name and BTW no for new contact
-    $oldName = $contact['organization_name'];
+    //  - 1d. Set overname count, overname van date, name, organisatievorm and BTW no for new contact
     $contact['organization_name'] = $name;
 
-    $contact[$btwNoField] = $btw_no;
-    $contact[$overnameCountField] = (int)$contact[$overnameCountField] + 1;
+    $contact[$btwNoField] = $btwNo;
+    $contact[$organisatievormField] = $organisatievorm;
+    $contact[$overnameCountField] = (int) $contact[$overnameCountField] + 1;
     $contact[$overnameVanField] = $overnamedatum;
 
     //  - 1d. Create new contact
     $newApotheekId = $this->api('Contact', 'create', $contact);
 
-    //  - 1e. Rename old contact and set overname tot date
+    //  - 1e. Set overname tot date for old contact
     $this->api('Contact', 'create', [
-      'id'                => $apotheekId,
-      'organization_name' => $oldName . ' (oud)',
+      'id'              => $apotheekId,
       $overnameTotField => $overnamedatumEnd,
     ]);
 
@@ -127,26 +141,30 @@ class CRM_KavaOvername_Task_OvernameTask {
     // -- 2. Create new relationships
 
     //  - 2a. Create new titularis relationship
-    $titularisRelationshipType = $this->api('RelationshipType', 'getsingle', [
-      'name_a_b' => 'heeft als titularis',
-      'return'   => 'id',
-    ]);
+    $titularisRelationshipTypeId = $cf->getRelationshipTypeByAbName('heeft als titularis')['id'];
     $this->api('Relationship', 'create', [
       'contact_id_a'         => $newApotheekId,
       'contact_id_b'         => $titularisId,
-      'relationship_type_id' => $titularisRelationshipType['id'],
+      'relationship_type_id' => $titularisRelationshipTypeId,
       'start_date'           => $overnamedatum,
     ]);
 
-    //  - 2d. Create new eigenaar relationship
-    $eigenaarRelationshipType = $this->api('RelationshipType', 'getsingle', [
-      'name_a_b' => 'heeft als eigenaar',
-      'return'   => 'id',
-    ]);
+    //  - 2b. Create new eigenaar relationship
+    $eigenaarRelationshipTypeId = $cf->getRelationshipTypeByAbName('heeft als eigenaar')['id'];
     $this->api('Relationship', 'create', [
       'contact_id_a'         => $newApotheekId,
       'contact_id_b'         => $eigenaarId,
-      'relationship_type_id' => $eigenaarRelationshipType['id'],
+      'relationship_type_id' => $eigenaarRelationshipTypeId,
+      'start_date'           => $overnamedatum,
+    ]);
+
+    //  - 2c. Create a new TD relationship
+    $tdRelationshipType1Id = $cf->getRelationshipTypeByAbName('heeft als tariferingsdienst')['id'];
+    $tdRelationshipType2Id = $cf->getRelationshipTypeByAbName('heeft als tariferingsdienst (&lt;&gt; KAVA)')['id'];
+    $this->api('Relationship', 'create', [
+      'contact_id_a'         => $newApotheekId,
+      'contact_id_b'         => $tdId,
+      'relationship_type_id' => $tdRelationshipType1Id,
       'start_date'           => $overnamedatum,
     ]);
 
@@ -210,13 +228,22 @@ class CRM_KavaOvername_Task_OvernameTask {
       'options'      => ['limit' => 0],
     ]);
 
+    //  - 4b. Get relationship type ids for exceptions
+    $relationshipExceptions = [
+      $cf->getRelationshipTypeByAbName('beheert patientbox van')['id'],
+      $cf->getRelationshipTypeByAbName('beheert financiële box van')['id'],
+      $titularisRelationshipTypeId,
+      $eigenaarRelationshipTypeId,
+      $tdRelationshipType1Id,
+      $tdRelationshipType2Id,
+    ];
+
     //  - 4b. Walk all relationships, add them to new contact, and end them for old contact
     $currentRelationships = array_merge($currentRelationshipsA, $currentRelationshipsB);
     foreach ($currentRelationships as $relationship) {
 
-      if ($relationship['relationship_type_id'] == $titularisRelationshipType['id'] ||
-          $relationship['relationship_type_id'] == $eigenaarRelationshipType['id']) {
-        // Don't copy titularis + eigenaar
+      if (in_array($relationship['relationship_type_id'], $relationshipExceptions)) {
+        // Don't copy this relationship
       } else {
         // Copy all other relationships
 
@@ -279,6 +306,12 @@ class CRM_KavaOvername_Task_OvernameTask {
           $newMembership['start_date'] = $overnamedatum;
         }
 
+        // Fix: set join date (cannot be in future)
+        $newMembership['join_date'] = ($overnamedatum < date('Ymd')) ? $overnamedatum : date('Ymd');
+
+        unset($newMembership['end_date']);
+        unset($newMembership['status_id']);
+
         // Add membership for new contact
         $this->api('Membership', 'create', $newMembership);
       }
@@ -291,8 +324,33 @@ class CRM_KavaOvername_Task_OvernameTask {
     }
 
 
-    // -- 6. That's all!
-    //    Add link to old and new contact to status message -> doesn't seem to work...
+    // -- 6. Migrate betaalschema to new contact
+
+    //  - 6a. Fetch betaalschema
+    $betaalschemaData = $this->api('CustomValue', 'get', [
+      'entity_id'                                   => $apotheekId,
+      'return.custom_' . $betaalschemaVanFieldId    => 1,
+      'return.custom_' . $betaalschemaTotFieldId    => 1,
+      'return.custom_' . $betaalschemaNummerFieldId => 1,
+    ]);
+
+    //  - 6b. Create new record
+    $this->api('CustomValue', 'create', [
+      'entity_id'                            => $newApotheekId,
+      'custom_' . $betaalschemaVanFieldId    => $overnamedatum,
+      'custom_' . $betaalschemaTotFieldId    => date('Ymdhis', strtotime($betaalschemaData[$betaalschemaVanFieldId]['latest'])),
+      'custom_' . $betaalschemaNummerFieldId => $betaalschemaData[$betaalschemaNummerFieldId]['latest'],
+    ]);
+
+    //  - 6c. End old record (use custom_128:5 to update custom value record id #5)
+    $latestRecordId = array_pop(array_keys($betaalschemaData[$betaalschemaNummerFieldId]));
+    $this->api('CustomValue', 'create', [
+      'entity_id' => $apotheekId,
+      'custom_' . $betaalschemaTotFieldId . ':' . $latestRecordId => $overnamedatumEnd,
+    ]);
+
+
+    // -- 7. That's all!
     // throw new CRM_KavaOvername_Exception('Execution interrupted during development');
 
     $this->transaction->commit();

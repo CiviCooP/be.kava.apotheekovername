@@ -320,6 +320,7 @@ class CRM_KavaOvername_Task_OvernameTask {
       $this->api('Membership', 'create', [
         'id'       => $membership['id'],
         'end_date' => $overnamedatumEnd,
+        'status_id' => 'Expired',
       ]);
     }
 

@@ -286,8 +286,14 @@ class CRM_KavaOvername_Task_OvernameTask {
     $apotheekkrantMembershipType = $this->api('MembershipType', 'getsingle', [
       'name' => 'Apotheekkrant',
     ]);
+    $aftMembershipType = $this->api('MembershipType', 'getsingle', [
+      'name' => 'AFT Abonnement',
+    ]);
 
-    //  - 5b. Walk all memberships, add them to new contact, and add them for old contact
+    // Fix: membership join date cannot be in future
+    $membershipsJoinDate = ($overnamedatum < date('Ymd')) ? $overnamedatum : date('Ymd');
+
+    //  - 5c. Walk all memberships, add them to new contact, and add them for old contact
     foreach ($currentMemberships as $membership) {
 
       if ($membership['membership_type_id'] == $volmachtApoMembershipType['id']) {
@@ -298,6 +304,7 @@ class CRM_KavaOvername_Task_OvernameTask {
         $newMembership = $membership;
         unset($newMembership['id']);
         $newMembership['contact_id'] = $newApotheekId;
+        $newMembership['join_date'] = $membershipsJoinDate;
 
         // Membership start date is original start date for Apotheekkrant, overnamedatum for all others
         if ($membership['membership_type_id'] == $apotheekkrantMembershipType['id']) {
@@ -306,8 +313,11 @@ class CRM_KavaOvername_Task_OvernameTask {
           $newMembership['start_date'] = $overnamedatum;
         }
 
-        // Fix: set join date (cannot be in future)
-        $newMembership['join_date'] = ($overnamedatum < date('Ymd')) ? $overnamedatum : date('Ymd');
+        // Set variable for use in 5d if we encounter an active AFT membership
+        if ($membership['membership_type_id'] == $aftMembershipType['id'] &&
+            in_array($membership['status_id'], [1, 2])) {
+          $hasAftMembership = TRUE;
+        }
 
         unset($newMembership['end_date']);
         unset($newMembership['status_id']);
@@ -318,10 +328,32 @@ class CRM_KavaOvername_Task_OvernameTask {
 
       // End membership for old contact
       $this->api('Membership', 'create', [
-        'id'       => $membership['id'],
-        'end_date' => $overnamedatumEnd,
+        'id'        => $membership['id'],
+        'end_date'  => $overnamedatumEnd,
         'status_id' => 'Expired',
       ]);
+    }
+
+    //  - 5d. Veery specific use case: no relationship with TD3 => membership AFT
+    if (!isset($hasAftMembership)) {
+      $td3ContactId = $this->api('Contact', 'getvalue', [
+        'return'            => 'id',
+        'organization_name' => 'TD3',
+      ]);
+      $td3Relationship = $this->api('Relationship', 'get', [
+        'contact_id_a' => $newApotheekId,
+        'contact_id_b' => $td3ContactId,
+        'is_active'    => 1,
+      ]);
+
+      if (!$td3Relationship || count($td3Relationship) === 0) {
+        $this->api('Membership', 'create', [
+          'contact_id'         => $newApotheekId,
+          'membership_type_id' => $aftMembershipType['id'],
+          'start_date'         => $overnamedatum,
+          'join_date'          => $membershipsJoinDate,
+        ]);
+      }
     }
 
 
@@ -346,7 +378,7 @@ class CRM_KavaOvername_Task_OvernameTask {
     //  - 6c. End old record (use custom_128:5 to update custom value record id #5)
     $latestRecordId = array_pop(array_keys($betaalschemaData[$betaalschemaNummerFieldId]));
     $this->api('CustomValue', 'create', [
-      'entity_id' => $apotheekId,
+      'entity_id'                                                 => $apotheekId,
       'custom_' . $betaalschemaTotFieldId . ':' . $latestRecordId => $overnamedatumEnd,
     ]);
 
@@ -370,12 +402,14 @@ class CRM_KavaOvername_Task_OvernameTask {
     try {
       // echo "DEBUG API CALL: " . print_r(func_get_args(), true) . "<br>\n";
       $res = civicrm_api3($entity, $action, $params);
-      if ($res['is_error']) {
+      if ($res['is_error'] == 1) {
         $this->transaction->rollback();
         throw new CRM_KavaOvername_Exception("API Error ({$entity}.{$action}): " . $res['error_message']);
       }
       if ($action == 'create' && !empty($res['id'])) {
         return $res['id'];
+      } elseif ($action == 'getvalue' && !empty($res['result'])) {
+        return $res['result'];
       } elseif (isset($res['values']) && is_array($res['values'])) {
         return $res['values'];
       } else {

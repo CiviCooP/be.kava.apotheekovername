@@ -10,7 +10,7 @@
 <script type="text/javascript">
   {literal}
   cj(function() {
-      cj('.crm-contact-actions-list-inner li.crm-contact-user-record').after('{/literal}{$kava_link_overname}{literal}');
+      cj('.crm-contact-actions-list-inner li.crm-contact-user-record, .crm-contact-actions-list-inner li.crm-contact-crm-contact-user-add').after('{/literal}{$kava_link_overname}{literal}');
   });
   {/literal}
 </script>

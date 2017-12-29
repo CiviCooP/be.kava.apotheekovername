@@ -346,7 +346,7 @@ class CRM_KavaOvername_Task_OvernameTask {
         'is_active'    => 1,
       ]);
 
-      if (!$td3Relationship || count($td3Relationship) === 0) {
+      if ($td3Relationship && count($td3Relationship) > 0) {
         $this->api('Membership', 'create', [
           'contact_id'         => $newApotheekId,
           'membership_type_id' => $aftMembershipType['id'],
